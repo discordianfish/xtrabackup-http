@@ -1,4 +1,6 @@
 # xtrabackup-http
+[![Build Status](https://travis-ci.org/imgix/xtrabackup-http.svg?branch=master)](https://travis-ci.org/imgix/xtrabackup-http)
+
 HTTP service around xtrabackup, allows to request backups.
 
 ## Usage

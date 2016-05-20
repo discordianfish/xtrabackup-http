@@ -8,6 +8,7 @@ msc() {
 	shift
 	mysqld --no-defaults -h "$prefix" \
 		--socket "$prefix.sock" \
+		--skip-grant \
 		--skip-networking "$@"
 }
 
@@ -15,9 +16,14 @@ msc() {
 cleanup_and_exit() {
 	local root=$1
 	local err=$?
-	cat "$root"/*.pid | xargs pkill -P
+	if [[ "$err" -gt 0 ]]; then
+		echo "Build failed"
+		tail -20 "$root"/*.log
+		exit $err
+	fi
+	[[ -e "$root"/*.pid ]] && cat "$root"/*.pid | xargs pkill -P
 	[[ -n ${TMP+x} ]] && rm -rf "$TMP"
-	exit $err
+	exit 0
 }
 
 stop_svc() {
@@ -30,7 +36,7 @@ wait_for_mysql() {
 	local sock=$1
 	local i=0
 	echo "- waiting for $sock"
-	while ! mysqladmin ping -u root -S "$sock"; do
+	while ! mysqladmin -s ping -u root -S "$sock"; do
 		echo -n .
 		if [[ "$i" -ge 10 ]]; then
 			echo
@@ -46,12 +52,14 @@ wait_for_mysql() {
 create_backups() {
 	local root=$1
 	echo "Bringing up source mysql instance"
-	msc "$root/source" --initialize-insecure > "$root/source.mysql.init.log" 2>&1
+	mysql_install_db --no-defaults "--datadir=$root/source"
+	# for mysql >=5.7
+	# msc "$root/source" --initialize-insecure > "$root/source.mysql.init.log" 2>&1
 	msc "$root/source" > "$root/source.mysql.log" 2>&1 &
 	echo $! > "$root/source.mysql.pid"
 
 	echo "Fetching test_db"
-	curl -L --progress-bar "https://github.com/datacharmer/test_db/archive/master.tar.gz" \
+	curl -L -s "https://github.com/datacharmer/test_db/archive/master.tar.gz" \
 		| tar -C "$root" -xzf -
 
 	wait_for_mysql "$root/source.sock"
@@ -66,7 +74,7 @@ create_backups() {
 
 	echo "Creating full backup"
 	mkdir "$root/backup.full"
-	curl -L --progress-bar -f http://localhost:8080/api/backup \
+	curl -L -s -f http://localhost:8080/api/backup \
 		| xbstream -vxC "$root/backup.full"
 	LSN=$(awk '/to_lsn/ { print $3 }' < "$root/backup.full/xtrabackup_checkpoints")
 
@@ -79,7 +87,7 @@ create_backups() {
 
 	echo "Creating incremental backup"
 	mkdir "$root/backup.incremental_diffs"
-	curl -L --progress-bar -f "http://localhost:8080/api/backup/$LSN" \
+	curl -L -s -f "http://localhost:8080/api/backup/$LSN" \
 		| xbstream -vxC "$root/backup.incremental_diffs"
 	
 	echo "Stopping source db"
@@ -92,9 +100,9 @@ main() {
 	if [[ "$#" -ge 1 ]]; then
 		root="$1"
 	else
-		root=$(mktemp -d)
+		root="$(mktemp -d)"
 	fi
-	mkdir -p "$root"
+	mkdir -p "$root/source"
 
 	# $root is local, so we want it expanded now
 	# shellcheck disable=SC2064
@@ -149,6 +157,7 @@ main() {
 		exit 1
 	fi
 	echo "Test passed!"
+	exit 0
 }
 
 main "$@"

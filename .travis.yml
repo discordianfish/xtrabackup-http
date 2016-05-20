@@ -1,0 +1,13 @@
+language: go
+sudo: required
+dist: trusty
+before_install:
+  - wget https://repo.percona.com/apt/percona-release_0.1-3.$(lsb_release -sc)_all.deb
+  - sudo dpkg -i percona-release_0.1-3.$(lsb_release -sc)_all.deb
+  - sudo apt-get update -qy
+  - sudo apt-get install -qy mysql-server percona-xtrabackup
+
+script:
+  - go get && go build
+  - ./run_integration_tests.sh /tmp/xb-test
+after_script: tail -n 50 /tmp/xb-test/*.log
