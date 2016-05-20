@@ -34,3 +34,16 @@ To extract a backup, you need to install
 [xbstream](https://www.percona.com/doc/percona-xtrabackup/2.2/xbstream/xbstream.html).
 
 
+## Tests
+There is a (big) shell script to end-to-end test backup and restore.
+
+Running `run_integration_tests.sh` will:
+
+- bring up a local mysqld instance
+- download and import [test_db](https://github.com/datacharmer/test_db)
+- start xtrabackup-http
+- fetch a backup
+- modify the db
+- fetch an incremental backup
+- load backup in new db and compare to test_db
+- load backup + incrementals and verify some checksum
